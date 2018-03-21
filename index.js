@@ -144,8 +144,8 @@ var processOperator = function (userState, operator) {
     }
 };
 
-app.listen(3000, function () {
-    setWebhook('https://bed39eb9.ngrok.io/webhook');
+app.listen(process.env.PORT || 3000, function () {
+    setWebhook('https://calcbottest.herokuapp.com/webhook');
 });
 
 const sendMessage = function(chatId, text, keyboard, onSent) {
