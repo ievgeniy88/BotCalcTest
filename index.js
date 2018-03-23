@@ -1,4 +1,4 @@
-var userStates = {};
+var userStates = {}; // TODO : Implement properly as state machine and use persistence storage (Redis for e.g.)
 
 var keyboard = {
     'inline_keyboard' : [
@@ -17,6 +17,7 @@ var app = express();
 
 app.use(bodyParser.json());
 
+// TODO : Implement properly with state machine
 app.post('/webhook', function (req, res) {
     const chatId = (req.body.callback_query || req.body).message.chat.id;
     
@@ -148,6 +149,7 @@ app.listen(process.env.PORT || 3000, function () {
     setWebhook('https://calcbottest.herokuapp.com/webhook');
 });
 
+// TODO : Implement with async/await
 const sendMessage = function(chatId, text, keyboard, onSent) {
     const data = JSON.stringify({
         'chat_id' : chatId,
@@ -191,6 +193,7 @@ const sendMessage = function(chatId, text, keyboard, onSent) {
     request.end();
 }
 
+// TODO : Implement with async/await
 const editMessage = function(chatId, messageId, keyboard, text) {
     const data = JSON.stringify({
         'chat_id' : chatId,
@@ -232,6 +235,7 @@ const editMessage = function(chatId, messageId, keyboard, text) {
     request.end();
 }
 
+// TODO : Implement with async/await
 const setWebhook = function(url) {
     const data = JSON.stringify({
         'url' : url
