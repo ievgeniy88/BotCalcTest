@@ -18,76 +18,90 @@ var app = express();
 app.use(bodyParser.json());
 
 // TODO : Implement properly with state machine
-app.post('/webhook', function (req, res) {
-    const chatId = (req.body.callback_query || req.body).message.chat.id;
+app.post('/webhook', async (req, res) => {
+    var chatId = '';
     
-    if (!(chatId in userStates))
+    try
     {
-        createClient(chatId); // TODO : Check message history
+        chatId = (req.body.callback_query || req.body).message.chat.id;
     }
-    else if (req.body.callback_query != undefined)
+    catch (ex)
     {
-        const data = req.body.callback_query.data;
-        
-        const userState = userStates[chatId];
+        console.log(ex);
+        res.sendStatus(200);
+        return;
+    }
 
-        if ('0123456789'.indexOf(data) !== -1)
+    try
+    {
+        if (!(chatId in userStates)) // TODO : Check message history
         {
-            processDigit(userState, data);
-        }
-        else if ('/*-+'.indexOf(data) !== -1)
-        {
-            processOperator(userState, data);
-        }
-        else if (data == '=')
-        {
-            if (userState.state != 'first')
-            {
-                var result = userState.second != '0'
-                    ? eval(`${userState.first}${userState.operator}${userState.second}`)
-                    : eval(`${userState.first}${userState.operator}${userState.first}`);
+            const result = await sendMessage(chatId, '0', keyboard);
 
-                editMessage(chatId, userState.messageId, keyboard, result);
-
-                userState.first = `${result}`;
-                userState.second = '0';
-                userState.operator = null;
-                userState.state = 'success'
+            userStates[chatId] = {
+                chatId : chatId,
+                messageId : JSON.parse(result).result.message_id,
+                first : '0',
+                operator : null,
+                second : '0',
+                state : 'first'
             }
         }
-        else if (data == 'AC')
+
+        if (req.body.callback_query != undefined)
         {
-            editMessage(chatId, userState.messageId, keyboard, 0);
+            const data = req.body.callback_query.data;
 
-            userState.first = '0';
-            userState.second = '0';
-            userState.operator = null;
-            userState.state = 'first'
-        }
-    }
+            const userState = userStates[chatId];
+
+            if ('0123456789'.indexOf(data) !== -1)
+            {
+                await processDigit(userState, data);
+            }
+            else if ('/*-+'.indexOf(data) !== -1)
+            {
+                await processOperator(userState, data);
+            }
+            else if (data == '=')
+            {
+                if (userState.state != 'first')
+                {
+                    var result = userState.second != '0'
+                        ? eval(`${userState.first}${userState.operator}${userState.second}`)
+                        : eval(`${userState.first}${userState.operator}${userState.first}`);
     
-    if (req.body.callback_query != undefined)
-    {
-        answerCallbackQuery(req.body.callback_query.id);
-    }
+                    await editMessage(chatId, userState.messageId, keyboard, result);
+    
+                    userState.first = `${result}`;
+                    userState.second = '0';
+                    userState.operator = null;
+                    userState.state = 'success'
+                }
+            }
+            else if (data == 'AC')
+            {
+                await editMessage(chatId, userState.messageId, keyboard, 0);
 
-    res.sendStatus(200);
+                userState.first = '0';
+                userState.second = '0';
+                userState.operator = null;
+                userState.state = 'first'
+            }
+
+            await answerCallbackQuery(req.body.callback_query.id);
+        }    
+    }
+    catch (ex)
+    {
+        console.log(ex);        
+    }
+    finally
+    {
+        res.sendStatus(200);
+    }
 });
 
-var createClient = function (chatId) {
-    sendMessage(chatId, '0', keyboard, function (messageId) {
-        userStates[chatId] = {
-            chatId : chatId,
-            messageId : messageId,
-            first : '0',
-            operator : null,
-            second : '0',
-            state : 'first'
-        }
-    });
-};
-
-var processDigit = function (userState, digit) {
+async function processDigit(userState, digit) {
     if (userState.state == 'first')
     {
         if (userState.first == '0')
@@ -99,12 +113,12 @@ var processDigit = function (userState, digit) {
             userState.first += digit;
         }
 
-        editMessage(userState.chatId, userState.messageId, keyboard, userState.first);
+        await editMessage(userState.chatId, userState.messageId, keyboard, userState.first);
     }
     else if (userState.state == 'success')
     {
         userState.first = digit;
-        editMessage(userState.chatId, userState.messageId, keyboard, userState.first);
+        await editMessage(userState.chatId, userState.messageId, keyboard, userState.first);
     }
     else
     {
@@ -117,17 +131,17 @@ var processDigit = function (userState, digit) {
             userState.second += digit;
         }
 
-        editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}${userState.second}`);
+        await editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}${userState.second}`);
     }
 };
 
-var processOperator = function (userState, operator) {
+async function processOperator(userState, operator) {
     if (userState.state == 'first' || userState.state == 'success' || (userState.state == 'second' && userState.operator != operator))
     {
         userState.operator = operator;
         userState.state = 'second';
 
-        editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}`);  
+        await editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}`);  
     }
     else
     {
@@ -140,174 +154,71 @@ var processOperator = function (userState, operator) {
             userState.operator = operator;
             userState.state = 'second'
 
-            editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}`);
+            await editMessage(userState.chatId, userState.messageId, keyboard, `${userState.first}${userState.operator}`);
         }        
     }
 };
 
-app.listen(process.env.PORT || 3000, function () {
-    setWebhook('https://calcbottest.herokuapp.com/webhook');
+app.listen(process.env.PORT || 3000, async function () {
+    setWebhook('https://calcbottest.herokuapp.com/webhook').catch(ex => console.log(ex));
 });
 
-// TODO : Implement with async/await
-const sendMessage = function(chatId, text, keyboard, onSent) {
-    const data = JSON.stringify({
+async function sendMessage(chatId, text, keyboard) {
+    const data = {
         'chat_id' : chatId,
         'text': text,
         'reply_markup' : keyboard
-    });
-    
-    console.log(data);
-  
-    const options = {
-        protocol: 'https:',
-        hostname: 'api.telegram.org',
-        port: 443,
-        path: '/bot575913070:AAHboWtBeqbtk-uZ25tN5_GzLaHdIyjmDas/sendMessage',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(data)
-        }
     };
   
-    var result = '';
-  
-    const callback = function(response) {
-        response.on('data', function (chunk) {
-            result += chunk;
-        });
-        response.on('end', function () {
-            console.log(result);            
-            onSent(JSON.parse(result).result.message_id);
-        });
-    }
-
-    var request = https.request(options, callback);
-  
-    request.on('error', function(err) {
-        console.log(err);
-    });
-
-    request.write(data);
-    request.end();
+    return await asyncTelegramRequest(data, 'sendMessage');
 }
 
-// TODO : Implement with async/await
-const editMessage = function(chatId, messageId, keyboard, text) {
-    const data = JSON.stringify({
+async function editMessage(chatId, messageId, keyboard, text) {
+    const data = {
         'chat_id' : chatId,
         'message_id' : messageId,
         'text': text,
         'reply_markup' : keyboard
-    });
-  
-    const options = {
-        protocol: 'https:',
-        hostname: 'api.telegram.org',
-        port: 443,
-        path: '/bot575913070:AAHboWtBeqbtk-uZ25tN5_GzLaHdIyjmDas/editMessageText',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(data)
-        }
     };
-  
-    var str = '';
-  
-    const callback = function(response) {
-        response.on('data', function (chunk) {
-            str += chunk;
-        });
-        response.on('end', function () {
-            console.log(str);
-        });
-    }
 
-    var request = https.request(options, callback);
-  
-    request.on('error', function(err) {
-        console.log(err);
-    });
-
-    request.write(data);
-    request.end();
+    return await asyncTelegramRequest(data, 'editMessageText');
 }
 
-// TODO : Implement with async/await
-const setWebhook = function(url) {
-    const data = JSON.stringify({
-        'url' : url
-    });
-
-    const options = {
-        protocol: 'https:',
-        hostname: 'api.telegram.org',
-        port: 443,
-        path: '/bot575913070:AAHboWtBeqbtk-uZ25tN5_GzLaHdIyjmDas/setWebhook',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(data)
-        }
-    };
-  
-    var str = '';
-  
-    const callback = function(response) {
-        response.on('data', function (chunk) {
-            str += chunk;
-        });
-        response.on('end', function () {
-            console.log(str);
-        });
-    }
-
-    var request = https.request(options, callback);
-  
-    request.on('error', function(err) {
-        console.log(err);
-    });
-
-    request.write(data);
-    request.end();
+async function setWebhook (url) {
+    return await asyncTelegramRequest({ 'url' : url }, 'setWebhook');
 }
 
-const answerCallbackQuery = function(queryId) {
-    const data = JSON.stringify({
-        'callback_query_id' : queryId
-    });
+async function answerCallbackQuery(queryId) {
+    return await asyncTelegramRequest({ 'callback_query_id' : queryId }, 'answerCallbackQuery');
+}
 
+async function asyncTelegramRequest(data, method) {
+    const requestData = JSON.stringify(data);
+    
     const options = {
         protocol: 'https:',
         hostname: 'api.telegram.org',
         port: 443,
-        path: '/bot575913070:AAHboWtBeqbtk-uZ25tN5_GzLaHdIyjmDas/answerCallbackQuery',
+        path: `/bot575913070:AAHboWtBeqbtk-uZ25tN5_GzLaHdIyjmDas/${method}`,
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(data)
+            'Content-Length': Buffer.byteLength(requestData)
         }
     };
-  
-    var str = '';
-  
-    const callback = function(response) {
-        response.on('data', function (chunk) {
-            str += chunk;
-        });
-        response.on('end', function () {
-            console.log(str);
-        });
-    }
 
-    var request = https.request(options, callback);
+    return new Promise((resolve, reject) => {
+        var result = '';
   
-    request.on('error', function(err) {
-        console.log(err);
-    });
+        const callback = response => {
+            response.on('data', chunk => result += chunk);
+            response.on('end', () => response.statusCode == 200 ? resolve(result) : reject(new Error(result)));
+        }
 
-    request.write(data);
-    request.end();
+        var request = https.request(options, callback);
+      
+        request.on('error', (err) => reject(new Error(result)));
+
+        request.end(requestData);
+    })
 }
