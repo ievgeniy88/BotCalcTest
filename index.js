@@ -217,7 +217,7 @@ async function asyncTelegramRequest(data, method) {
 
         var request = https.request(options, callback);
       
-        request.on('error', (err) => reject(new Error(result)));
+        request.on('error', (err) => reject(new Error(err)));
 
         request.end(requestData);
     })
